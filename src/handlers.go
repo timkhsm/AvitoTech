@@ -12,7 +12,7 @@ import (
 
 	db "github.com/A1sal/AvitoTech/database"
 	sg "github.com/A1sal/AvitoTech/segment"
-	usseg "github.com/A1sal/AvitoTech/usersegment"
+	usg "github.com/A1sal/AvitoTech/usersegment"
 )
 
 type createSegmentBody struct {
@@ -38,6 +38,7 @@ type userModifyErrorResponse struct {
 func (u userSegmentsModifyBody) String() string {
 	return fmt.Sprintf("\n========\nUSER %dto add: %v\nto remove%v\n========\n", u.UserId, u.SegmentsToAdd, u.SegmentsToRemove)
 }
+
 
 func helloRootHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintln(w, "OK")
@@ -74,20 +75,19 @@ func createSegmentHandler(w http.ResponseWriter, r *http.Request) {
 	writeResponse(w, []byte("OK"), 200)
 }
 
+
 func deleteSegmentHandler(w http.ResponseWriter, r *http.Request) {
 	segmentName := chi.URLParam(r, "segmentName")
 	res := "OK"
-	logStatus := "SUCCESS"
 	statusCode := 200
 	if err := serviceRepo.SegmentDb.DeleteByName(segmentName); err != nil {
 		res = "internal error"
 		statusCode = 500
-		logStatus = "DENIED"
 	}
-	fmt.Printf("%s %s ==> delete segment %s | %s\n", r.Method, r.URL.Path, segmentName, logStatus)
 	w.WriteHeader(statusCode)
 	fmt.Fprintln(w, res)
 }
+
 
 func modifyUserSegments(w http.ResponseWriter, r *http.Request) {
 	var reqBody userSegmentsModifyBody
@@ -102,8 +102,12 @@ func modifyUserSegments(w http.ResponseWriter, r *http.Request) {
 	toRm := xorStringArrays(reqBody.SegmentsToRemove, reqBody.SegmentsToAdd)
 	userId := reqBody.UserId
 
-	// it must be like some kind of a transaction
-	// so if one value is incorrect, the others will be ignored
+	if _, err := serviceRepo.UserDb.GetUserById(userId); err != nil {
+		writeResponse(w, []byte(fmt.Sprintf("user with id %d not found", userId)), 404)
+		return
+	}
+
+	
 	unableToRm, removable := serviceRepo.CheckNonExistantSegments(toRm)
 	unableToAdd, addable := serviceRepo.CheckNonExistantSegments(toAdd)
 	var errorResponse userModifyErrorResponse = userModifyErrorResponse{}
@@ -127,7 +131,7 @@ func modifyUserSegments(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	for _, v := range addable {
-		userSegment := usseg.NewUserSegment(userId, v)
+		userSegment := usg.NewUserSegment(userId, v)
 		err := serviceRepo.UserSegmentDb.CreateObject(userSegment)
 		if err != nil {
 			var resp []byte
@@ -147,6 +151,7 @@ func modifyUserSegments(w http.ResponseWriter, r *http.Request) {
 	writeResponse(w, []byte("OK"), 200)
 }
 
+
 func getUserSegments(w http.ResponseWriter, r *http.Request) {
 	userIdStr := chi.URLParam(r, "userId")
 	userSegments := userSegmentsResponseBody{}
@@ -155,6 +160,12 @@ func getUserSegments(w http.ResponseWriter, r *http.Request) {
 	// because our router checks if the
 	// value contains digits only
 	userId, _ := strconv.Atoi(userIdStr)
+
+	if _, err := serviceRepo.UserDb.GetUserById(userId); err != nil {
+		writeResponse(w, []byte(fmt.Sprintf("user with id %d not found", userId)), 404)
+		return
+	}
+
 	segmentNames := serviceRepo.GetUserActiveSegments(userId)
 	if segmentNames == nil {
 		writeResponse(w, []byte("user not found"), 404)
@@ -247,23 +258,23 @@ func getMonthNumber(month string) int {
 	}
 }
 
-func xorStringArrays(str1, str2 []string) []string {
-	checker := make(map[string]bool, len(str1)+len(str2))
-	res := make([]string, 0, len(str1))
-	for _, s := range str2 {
+
+func writeResponse(w http.ResponseWriter, msg []byte, statusCode int) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	w.Write(msg)
+}
+func xorStringArrays(a, b []string) []string {
+	checker := make(map[string]bool, len(a)+len(b))
+	res := make([]string, 0, len(a))
+	for _, s := range b {
 		checker[s] = true
 	}
-	for _, s := range str1 {
+	for _, s := range a {
 		if _, ok := checker[s]; !ok {
 			res = append(res, s)
 			checker[s] = true
 		}
 	}
 	return res
-}
-
-func writeResponse(w http.ResponseWriter, mesg []byte, statusCode int) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(statusCode)
-	w.Write(mesg)
 }

@@ -3,6 +3,7 @@ package usersegment
 import (
 	"context"
 	"fmt"
+
 	datab_ "github.com/A1sal/AvitoTech/database"
 	"github.com/vingarcia/ksql"
 )
@@ -20,6 +21,21 @@ func NewUserSegmentActualDatabase(db ksql.DB) *UserSegmentActualDatabase {
 }
 
 func (d *UserSegmentActualDatabase) CreateObject(s UserSegment) error {
+	var check UserSegment
+	if err := d.db.QueryOne(context.Background(), &check, "select * from user_segments where user_id=$1 and segment_name=$2", s.UserId, s.SegmentName); err == nil {
+		_, err := d.db.Exec(
+			context.Background(),
+			"update user_segments set added_at=now(), removed_at=null, is_active='true' where user_id=$1 and segment_name=$2",
+			s.UserId,
+			s.SegmentName,
+		)
+		if err != nil {
+			fmt.Println(err)
+			return datab_.ErrInternal{}
+		}
+		return nil
+	}
+
 	_, err := d.db.Exec(context.Background(), "insert into user_segments(user_id, segment_name) values($1, $2)", s.UserId, s.SegmentName)
 	if err != nil {
 		fmt.Println(err)
@@ -37,6 +53,7 @@ func (d *UserSegmentActualDatabase) GetByUserId(id int) []UserSegment {
 	}
 	return res
 }
+
 func (d *UserSegmentActualDatabase) DeleteObject(s UserSegment) error {
 	err := d.db.Delete(context.Background(), d.table, &s)
 	if err != nil {
@@ -44,6 +61,9 @@ func (d *UserSegmentActualDatabase) DeleteObject(s UserSegment) error {
 	}
 	return err
 }
+
+
+
 func (d *UserSegmentActualDatabase) GetUserActiveSegments(id int) []UserSegment {
 	res := make([]UserSegment, 0)
 	err := d.db.Query(
@@ -104,6 +124,14 @@ func (d *UserSegmentActualDatabase) GetUserSegmentActionsInPeriod(userId, year, 
 	return res
 }
 
+func (d *UserSegmentActualDatabase) DeleteByUserId(id int) error {
+	_, err := d.db.Exec(context.Background(), "delete from user_segments where user_id=$1", id)
+	if err != nil {
+		fmt.Println(err)
+	}
+	return err
+}
+
 func (d *UserSegmentActualDatabase) GetBySegmentName(name string) []UserSegment {
 	res := make([]UserSegment, 0)
 	err := d.db.Query(context.Background(), &res, "select * from user_segments where segment_name=$1", name)
@@ -112,14 +140,6 @@ func (d *UserSegmentActualDatabase) GetBySegmentName(name string) []UserSegment 
 		res = nil
 	}
 	return res
-}
-
-func (d *UserSegmentActualDatabase) DeleteByUserId(id int) error {
-	_, err := d.db.Exec(context.Background(), "delete from user_segments where user_id=$1", id)
-	if err != nil {
-		fmt.Println(err)
-	}
-	return err
 }
 
 func (d *UserSegmentActualDatabase) SetUserSegmentInactive(user_id int, segment_name string) error {
