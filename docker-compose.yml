@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+
+  go_server:
+    build: .
+    env_file: .env
+    container_name: go_server
+    hostname: go_server
+    depends_on:
+      - postgres
+    ports:
+      - $APP_OUTTER_PORT:$APP_PORT
+
+  postgres:
+    image: "postgres:12-alpine"
+    env_file: .env
+    container_name: db_postgres
+    hostname: $POSTGRES_HOST
+    ports:
+      - $POSTGRES_PORT:$PG_INNER_PORT
